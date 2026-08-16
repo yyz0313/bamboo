@@ -51,3 +51,21 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 *.whl
+
+# vendor/deepseek-harness - if submodule, these will be ignored
+vendor/deepseek-harness/.agents/
+vendor/deepseek-harness/.claude/
+vendor/deepseek-harness/.github/
+vendor/deepseek-harness/docs/
+vendor/deepseek-harness/examples/
+vendor/deepseek-harness/native/
+vendor/deepseek-harness/packages/
+vendor/deepseek-harness/patches/
+vendor/deepseek-harness/scripts/
+vendor/deepseek-harness/website/
+vendor/deepseek-harness/tsconfig*.json
+vendor/deepseek-harness/vitest*.ts
+vendor/deepseek-harness/pnpm-lock.yaml
+vendor/deepseek-harness/pnpm-workspace.yaml
+vendor/deepseek-harness/pytest.ini
+vendor/deepseek-harness/THIRD_PARTY_NOTICES.md
