@@ -1,0 +1,35 @@
+# Bamboo Profile — dsh 自定义 profile
+#
+# 基于 headless profile，叠加 model-router 插件。
+# 使用方式：dsh --profile bamboo "你的任务"
+#
+# 此文件放在 DSH_HOME/profiles/bamboo/ 目录下，
+# 或通过 --profile 路径指定。
+
+# Bundle 组合（继承 headless 基础层）
+bundles:
+  - dsh-base
+  - dsh-headless
+
+# 叠加插件
+plugins:
+  # model-router 故障转移（本地路径，开发时用）
+  - path: ../../plugins/bamboo-model-router
+    # 生产环境改用 published 版本：
+    # - name: '@bamboo/model-router'
+
+# 用户自定义 patch（覆盖默认配置）
+cordisPatch: |
+  # 设置默认 agent 使用 model-router 路由
+  - replace:
+    - id: agent-default-model
+      config:
+        provider: 'bamboo-failover'   # 指向 model-router
+        model: 'deepseek-v4-flash'
+
+  # 确保 headless profile 使用 bamboo-failover
+  - replace:
+    - id: headless-agent
+      config:
+        modelProvider: 'bamboo-failover'
+        modelName: 'deepseek-v4-flash'

@@ -1,0 +1,49 @@
+# @bamboo/model-router — cordis patch 配置示例
+#
+# 使用方法：将此文件追加到你的 dsh profile 的 cordis.patch.yml 中，
+# 或通过 dsh plugin load bamboo-model-router --patch ./cordis.patch.yml 加载。
+#
+# bufferMode 说明：
+#   strict  （默认）：所有 chunk 缓冲，后端失败则丢弃换下一个。用户看到完整响应，延迟约 50-200ms。
+#                    适合：中途余额耗尽、网络抖动等场景。
+#   hybrid  ：前 3 个 chunk 缓冲后实时输出。延迟低，但中途失败时用户可能看到残缺内容。
+#   stream  ：不缓冲，零延迟。只处理首 token 前失败。
+#
+# 推荐：日常用 strict，对延迟敏感的场景用 hybrid。
+
+- insert:
+  - id: model-router
+    name: '@bamboo/model-router'
+    config:
+      # 对外暴露的单一 provider 路由名
+      # agent-default-model 的 provider 填这个值
+      route: 'bamboo-failover'
+
+      # 后端列表（按优先级排序）
+      backends:
+        # 主 Key（来自 DEEPSEEK_API_KEY）
+        - provider: 'deepseek-official'
+          model: 'deepseek-v4-flash'
+          label: '主 Key'
+
+        # 备用 Key（来自 BAMBOO_BACKUP_1_API_KEY）
+        - provider: 'deepseek-official'
+          model: 'deepseek-v4-flash'
+          credentialEnvKey: 'BAMBOO_BACKUP_1_API_KEY'
+          label: '备用 Key'
+
+      # 缓冲模式：strict | hybrid | stream
+      bufferMode: 'strict'
+
+      # hybrid 模式下 warmup 后开始实时输出（默认 3）
+      warmupChunks: 3
+
+      # 最大缓存 chunk 数，防止内存无限增长（默认 1000）
+      maxBufferedChunks: 1000
+
+      # 是否允许首 token 之后靠整轮重试切换
+      # strict 模式下此参数无效（buffer 会处理）
+      allowStepRetry: true
+
+      # 日志级别：silent | normal | verbose
+      logLevel: 'normal'

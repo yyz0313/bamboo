@@ -1,0 +1,15 @@
+# Bamboo Bridge Requirements
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+
+# Optional dependencies
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# Windows compatibility (optional, only needed on Windows)
+pywin32>=306; platform_system == 'Windows'
+
+# Testing
+pytest>=7.0.0

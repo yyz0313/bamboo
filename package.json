@@ -1,0 +1,26 @@
+{
+  "name": "bamboo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bamboo — Tauri shell + Python bridge + dsh agent | Codex 风格桌面端",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.cjs",
+    "build": "node scripts/build.cjs",
+    "bridge": "python bridge/main.py",
+    "test": "pytest bridge/tests/ -q",
+    "tauri:dev": "cd src-tauri && cargo run",
+    "tauri:build": "cd src-tauri && cargo tauri build"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "python": ">=3.10"
+  },
+  "dependencies": {
+    "uvicorn": "^0.34.0",
+    "fastapi": "^0.115.0"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  }
+}

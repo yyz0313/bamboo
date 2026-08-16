@@ -1,0 +1,91 @@
+{
+  "name": "Bamboo Auto Agent",
+  "description": "自动完成 Bamboo 项目的功能实现、测试和文档工作",
+  "objectives": [
+    "实现所有缺失的前端组件",
+    "完成插件UI集成",
+    "编写自动化测试",
+    "生成安装包脚本",
+    "优化Windows兼容性"
+  ],
+  "subagents": [
+    {
+      "id": "ui-builder",
+      "model": "deepseek-v4",
+      "temperature": 0.3,
+      "maxTokens": 32000,
+      "purpose": "实现前端UI组件"
+    },
+    {
+      "id": "api-impl",
+      "model": "deepseek-v4",
+      "temperature": 0.1,
+      "maxTokens": 32000,
+      "purpose": "实现后端API端点"
+    },
+    {
+      "id": "tester",
+      "model": "deepseek-v4-flash",
+      "temperature": 0.2,
+      "maxTokens": 16000,
+      "purpose": "编写并运行测试用例"
+    },
+    {
+      "id": "docs-writer",
+      "model": "deepseek-v4",
+      "temperature": 0.5,
+      "maxTokens": 32000,
+      "purpose": "撰写文档和用户指南"
+    }
+  ],
+  "tasks": [
+    {
+      "phase": "ui-components",
+      "subagent": "ui-builder",
+      "tasks": [
+        "实现 ArchivePanel React组件",
+        "实现 MCPBridgePanel React组件",
+        "实现 DocumentSkillsPanel React组件",
+        "实现 BrowserAutomationPanel React组件",
+        "实现 PluginMarketplacePanel 组件",
+        "实现 MemorySystemPanel 组件",
+        "实现 UsageTrackerPanel 组件"
+      ]
+    },
+    {
+      "phase": "api-endpoints",
+      "subagent": "api-impl",
+      "tasks": [
+        "实现 document 文档生成API",
+        "实现 browser 浏览器自动化API",
+        "实现 memory 记忆系统API",
+        "实现 plugin 插件市场API",
+        "实现 diagnostics 诊断工具API",
+        "实现 usage 使用统计API"
+      ]
+    },
+    {
+      "phase": "testing",
+      "subagent": "tester",
+      "tasks": [
+        "编写 bridge/main.py 单元测试",
+        "编写 bridge/migration.py 集成测试",
+        "编写 bridge/plugin_marketplace.py 测试",
+        "编写前端组件测试",
+        "实现Windows兼容性测试脚本"
+      ]
+    },
+    {
+      "phase": "documentation",
+      "subagent": "docs-writer",
+      "tasks": [
+        "编写插件市场用户指南",
+        "编写MCP桥接使用手册",
+        "编写文档生成器指南",
+        "编写安装包使用说明",
+        "编写Windows常见问题排查"
+      ]
+    }
+  ],
+  "autoExecute": true
+}

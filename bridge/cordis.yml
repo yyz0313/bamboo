@@ -1,0 +1,285 @@
+# Bamboo Bridge Cordis Config (Enhanced)
+# ========================================
+# Multiple model presets with temperature support
+# Subagent model specification support
+
+# === Core Runtime ===
+- id: sdk-jsonrpc-server
+  name: '@deepseek-ai/dsh-sdk-jsonrpc-server'
+
+# === Agent Core ===
+- id: agent-core
+  name: '@deepseek-ai/dsh-agent-spine-demo'
+  config:
+    workspaceContext:
+      maxBytes: 65536
+
+# === LLM Providers ===
+# Primary: DeepSeek Models
+- id: llm-deepseek
+  name: '@deepseek-ai/dsh-llm-deepseek'
+  config:
+    model: deepseek-v4-flash  # Default model
+    temperature: 0.2           # Default temperature
+    maxTokens: 32000           # Default max tokens
+    # Supports: deepseek-v4, deepseek-v4-flash, deepseek-v2-chat, etc.
+
+# Fallback: DeepSeek V2 Chat
+- id: llm-deepseek-v2
+  name: '@deepseek-ai/dsh-llm-deepseek'
+  config:
+    model: deepseek-v2-chat
+    temperature: 0.7
+    maxTokens: 16000
+
+# === Model Presets ===
+# These can be selected via environment variable or API
+- id: preset-deepseek-flash
+  name: cordis:group
+  group: true
+  config:
+    llmConfig:
+      model: deepseek-v4-flash
+      temperature: 0.2
+      maxTokens: 32000
+      provider: deepseek
+      # Third-party model options enabled
+      enableThirdPartyOptions: true
+      temperatureRange: [0.0, 2.0]
+      topPRange: [0.0, 1.0]
+
+- id: preset-deepseek-coder
+  name: cordis:group
+  group: true
+  config:
+    llmConfig:
+      model: deepseek-v4-coder  # When available
+      temperature: 0.1
+      maxTokens: 64000
+      provider: deepseek
+      enableThirdPartyOptions: true
+
+- id: preset-deepseek-reasoning
+  name: cordis:group
+  group: true
+  config:
+    llmConfig:
+      model: deepseek-v4
+      temperature: 0.3
+      maxTokens: 128000
+      provider: deepseek
+      enableThirdPartyOptions: true
+
+- id: preset-openai-compatible
+  name: cordis:group
+  group: true
+  config:
+    llmConfig:
+      # For OpenAI-compatible API backends (Ollama, vLLM, etc.)
+      model: llama-3.1-70b (custom)
+      temperature: 0.7
+      maxTokens: 16000
+      baseUrl: ${OLLAMA_BASE_URL:-http://localhost:11434}
+      enableThirdPartyOptions: true
+      temperatureRange: [0.0, 2.0]
+      topPRange: [0.0, 1.0]
+      apiKey: ${OPENAI_API_KEY:-}
+
+- id: preset-low-temperature
+  name: cordis:group
+  group: true
+  config:
+    llmConfig:
+      model: ${MODEL_NAME:-deepseek-v4-flash}
+      temperature: 0.0  # Deterministic output
+      maxTokens: 16000
+      enableThirdPartyOptions: true
+
+- id: preset-high-temperature
+  name: cordis:group
+  group: true
+  config:
+    llmConfig:
+      model: ${MODEL_NAME:-deepseek-v4-flash}
+      temperature: 1.0  # Creative output
+      maxTokens: 16000
+      enableThirdPartyOptions: true
+
+# === Shell Tools ===
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: !!js process.platform === 'win32'
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
+
+- id: subprocess
+  name: '@deepseek-ai/dsh-subprocess-local'
+
+# === Filesystem Tools ===
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+# === Skills ===
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# === Goals ===
+- id: tool-goal
+  name: '@deepseek-ai/dsh-tool-goal'
+
+# === Plan Mode (read-only exploration) ===
+- id: planning
+  name: cordis:group
+  group: true
+  isolate:
+    planMode: true
+  config:
+    - id: plan-mode
+      name: '@deepseek-ai/dsh-plan-mode'
+      config:
+        section: |
+              You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode.
+              Explore first. Use non-mutating reads, searches, static analysis, and checks.
+              Do not edit or write files. Prefer existing functions and patterns.
+              When ready, call exit_plan_mode with the complete plan markdown.
+
+# === Compaction (auto context compression) ===
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 8192
+        headChars: 4096
+        tailChars: 1024
+
+# === Sub-agents & Workflows ===
+- id: delegation
+  name: cordis:group
+  group: true
+  isolate:
+    workflowEngine: true
+  config:
+    - id: tool-subagent-control
+      name: '@deepseek-ai/dsh-tool-subagent-control'
+    - id: tool-subagent-list-agents
+      name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+    - id: tool-subagent
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        # Subagent can specify model and parameters
+        subagentConfig:
+          # Each subagent can override these
+          defaultModel: ${SUBAGENT_DEFAULT_MODEL:-deepseek-v4-flash}
+          defaultTemperature: 0.7
+          defaultMaxTokens: 16000
+          # Enable model specification in subagent instructions
+          allowModelOverride: true
+          allowTemperatureOverride: true
+          allowProviderOverride: true
+        provider: fork
+        toolName: subagent_fork
+        backgroundMode: continuable
+    - id: workflow-worker-thread
+      name: '@deepseek-ai/dsh-workflow-worker-thread'
+      config:
+        provider: spawn
+    - id: tool-workflow
+      name: '@deepseek-ai/dsh-tool-workflow'
+    - id: tool-ralph
+      name: '@deepseek-ai/dsh-tool-ralph'
+      config:
+        subagentProvider: spawn
+        maxRounds: 64
+
+# === Interactive Tools ===
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true
+
+# === Web Search ===
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    fetch: false
+    searchTimeoutMs: 60000
+
+# === Background Jobs ===
+- id: tool-jobs
+  name: '@deepseek-ai/dsh-tool-jobs'
+
+# === Session Persistence ===
+- id: sessions
+  name: '@deepseek-ai/dsh-session-persistence-jsonl'
+  config:
+    root: !!js process.env.DSH_SESSION_ROOT ?? './.sessions'
+
+- id: session-checkpoints
+  name: '@deepseek-ai/dsh-session-checkpoint-policy'
+
+# === Local FS Context ===
+- id: fs-local
+  name: '@deepseek-ai/dsh-fs-local'
+  config:
+    cwd: !!js process.env.DSH_CWD ?? process.cwd()
+
+# === Model Selection Handler ===
+# This allows runtime model selection with temperature options
+- id: model-selector
+  name: cordis:group
+  group: true
+  config:
+    defaultPreset: standard
+    presets:
+      - name: standard
+        model: deepseek-v4-flash
+        temperature: 0.2
+      - name: code
+        model: deepseek-v4-coder
+        temperature: 0.1
+      - name: creative
+        model: deepseek-v4-flash
+        temperature: 0.7
+      - name: reasoning
+        model: deepseek-v4
+        temperature: 0.3
+      - name: low-temp
+        model: deepseek-v4-flash
+        temperature: 0.0
+    # Third-party model support
+    thirdPartyModels:
+      - name: ollama-llama3
+        baseUrl: http://localhost:11434
+        model: llama3.1
+        temperature: 0.7
+      - name: ollama-qwen
+        baseUrl: http://localhost:11434
+        model: qwen2.5-coder
+        temperature: 0.2
+      - name: vllm-deepseek
+        baseUrl: ${VLLM_BASE_URL:-http://localhost:8000}
+        model: deepseek-v4-flash
+        temperature: 0.2
