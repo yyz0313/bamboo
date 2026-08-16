@@ -1,0 +1,115 @@
+name: Build Bamboo Windows EXE
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:  # 手动触发，可在此上传 dsh vendor zip
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  build-exe:
+    name: Build Windows EXE
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install bridge dependencies
+        run: pip install fastapi uvicorn
+
+      - name: Install UI dependencies
+        run: |
+          cd src
+          npm install react react-dom @vitejs/plugin-react vite typescript @types/react @types/react-dom
+
+      - name: Build React UI
+        run: |
+          cd src
+          npx vite build
+
+      - name: Build dsh vendor (if submodule present)
+        run: |
+          if (Test-Path "vendor/deepseek-harness") {
+            echo "dsh vendor present, attempting build..."
+            # The Windows exe is built by scripts/build-exe-for-python-sdk.ts
+            # which requires tsx and node >= 22
+            npm install -g tsx
+            cd vendor/deepseek-harness
+            # pnpm install may fail without network; skip if unavailable
+            pnpm install --no-frozen-lockfile 2>$null
+            # Copy the cordis.yml config for reference
+            Copy-Item "python/sdk-runtime/src/deepseek_harness_runtime/runtime/cordis.yml" "../../../bridge/" -ErrorAction SilentlyContinue
+          }
+
+      - name: Package bridge into dist
+        run: |
+          mkdir -Force dist
+          Copy-Item -Recurse -Force bridge dist/
+          Copy-Item -Recurse -Force src/dist dist/ui/
+          # Create launcher batch file
+          @"
+          @echo off
+          chcp 65001 >nul
+          echo Launching Bamboo...
+          python "%~dp0bridge\main.py" --port 18720
+          "@ | Out-File -Encoding utf8 dist\Bamboo.bat
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bamboo-windows
+          path: dist/
+          retention-days: 7
+
+  build-tauri:
+    name: Build Tauri EXE (requires rustup)
+    if: false  # Disabled: Rust toolchain not available in sandbox
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install frontend deps
+        run: |
+          cd src
+          npm install
+
+      - name: Build Tauri
+        run: |
+          cd src-tauri
+          cargo tauri build
+
+      - name: Upload Tauri artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bamboo-tauri
+          path: src-tauri/target/release/bundle/
+          retention-days: 7

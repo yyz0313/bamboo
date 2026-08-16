@@ -1,0 +1,15 @@
+==================================================
+ Bamboo Git Setup (dulwich)
+==================================================
+
+Repo: C:\Users\yyz20\WorkBuddy\bamboo
+  .git exists, reusing
+
+Setting config...
+  name = Bamboo Developer
+  email = bamboo@local
+
+Scanning files...
+  total: 7486, tracked: 7387
+
+Staging files...

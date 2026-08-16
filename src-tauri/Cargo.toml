@@ -1,0 +1,22 @@
+[package]
+name = "bamboo"
+version = "0.1.0"
+description = "Bamboo — Tauri desktop app"
+authors = []
+edition = "2021"
+
+[lib]
+name = "bamboo_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build]
+target-dir = "../target/tauri"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }

@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+vendor/node_modules/
+src/node_modules/
+
+# Build output
+dist/
+lib/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Tauri
+src-tauri/target/
+src-tauri/capabilities/
+src-tauri/*.png
+
+# DSH vendor (keep structure, ignore built artifacts)
+vendor/deepseek-harness/.dsh/
+vendor/deepseek-harness/node_modules/
+vendor/deepseek-harness/lib/
+vendor/deepseek-harness/dist/
+vendor/deepseek-harness/python/sdk-runtime/src/deepseek_harness_runtime/runtime/dsh-jsonrpc-agent*
+!vendor/deepseek-harness/python/sdk-runtime/src/deepseek_harness_runtime/runtime/cordis.yml
+
+# Bamboo
+.bamboo.pid
+.bamboo.log
+reports/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+*.whl
