@@ -1,6 +1,7 @@
-# Bamboo Bridge Cordis Config
-# Based on dsh standard preset — full coding agent capabilities
-# All tools from codex are available; this mirrors the standard preset
+# Bamboo Bridge Cordis Config (Enhanced)
+# ========================================
+# Multiple model presets with temperature support
+# Subagent model specification support
 
 # === Core Runtime ===
 - id: sdk-jsonrpc-server
@@ -13,9 +14,96 @@
     workspaceContext:
       maxBytes: 65536
 
-# === Model ===
+# === LLM Providers ===
+# Primary: DeepSeek Models
 - id: llm-deepseek
   name: '@deepseek-ai/dsh-llm-deepseek'
+  config:
+    model: deepseek-v4-flash  # Default model
+    temperature: 0.2           # Default temperature
+    maxTokens: 32000           # Default max tokens
+    # Supports: deepseek-v4, deepseek-v4-flash, deepseek-v2-chat, etc.
+
+# Fallback: DeepSeek V2 Chat
+- id: llm-deepseek-v2
+  name: '@deepseek-ai/dsh-llm-deepseek'
+  config:
+    model: deepseek-v2-chat
+    temperature: 0.7
+    maxTokens: 16000
+
+# === Model Presets ===
+# These can be selected via environment variable or API
+- id: preset-deepseek-flash
+  name: cordis:group
+  group: true
+  config:
+    llmConfig:
+      model: deepseek-v4-flash
+      temperature: 0.2
+      maxTokens: 32000
+      provider: deepseek
+      # Third-party model options enabled
+      enableThirdPartyOptions: true
+      temperatureRange: [0.0, 2.0]
+      topPRange: [0.0, 1.0]
+
+- id: preset-deepseek-coder
+  name: cordis:group
+  group: true
+  config:
+    llmConfig:
+      model: deepseek-v4-coder  # When available
+      temperature: 0.1
+      maxTokens: 64000
+      provider: deepseek
+      enableThirdPartyOptions: true
+
+- id: preset-deepseek-reasoning
+  name: cordis:group
+  group: true
+  config:
+    llmConfig:
+      model: deepseek-v4
+      temperature: 0.3
+      maxTokens: 128000
+      provider: deepseek
+      enableThirdPartyOptions: true
+
+- id: preset-openai-compatible
+  name: cordis:group
+  group: true
+  config:
+    llmConfig:
+      # For OpenAI-compatible API backends (Ollama, vLLM, etc.)
+      model: llama-3.1-70b (custom)
+      temperature: 0.7
+      maxTokens: 16000
+      baseUrl: ${OLLAMA_BASE_URL:-http://localhost:11434}
+      enableThirdPartyOptions: true
+      temperatureRange: [0.0, 2.0]
+      topPRange: [0.0, 1.0]
+      apiKey: ${OPENAI_API_KEY:-}
+
+- id: preset-low-temperature
+  name: cordis:group
+  group: true
+  config:
+    llmConfig:
+      model: ${MODEL_NAME:-deepseek-v4-flash}
+      temperature: 0.0  # Deterministic output
+      maxTokens: 16000
+      enableThirdPartyOptions: true
+
+- id: preset-high-temperature
+  name: cordis:group
+  group: true
+  config:
+    llmConfig:
+      model: ${MODEL_NAME:-deepseek-v4-flash}
+      temperature: 1.0  # Creative output
+      maxTokens: 16000
+      enableThirdPartyOptions: true
 
 # === Shell Tools ===
 - id: tool-bash
@@ -98,12 +186,16 @@
     - id: tool-subagent
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
-        provider: spawn
-        toolName: subagent
-        backgroundMode: continuable
-    - id: tool-subagent-fork
-      name: '@deepseek-ai/dsh-tool-subagent'
-      config:
+        # Subagent can specify model and parameters
+        subagentConfig:
+          # Each subagent can override these
+          defaultModel: ${SUBAGENT_DEFAULT_MODEL:-deepseek-v4-flash}
+          defaultTemperature: 0.7
+          defaultMaxTokens: 16000
+          # Enable model specification in subagent instructions
+          allowModelOverride: true
+          allowTemperatureOverride: true
+          allowProviderOverride: true
         provider: fork
         toolName: subagent_fork
         backgroundMode: continuable
@@ -139,7 +231,7 @@
 - id: tool-jobs
   name: '@deepseek-ai/dsh-tool-jobs'
 
-# === Persistence ===
+# === Session Persistence ===
 - id: sessions
   name: '@deepseek-ai/dsh-session-persistence-jsonl'
   config:
@@ -153,3 +245,41 @@
   name: '@deepseek-ai/dsh-fs-local'
   config:
     cwd: !!js process.env.DSH_CWD ?? process.cwd()
+
+# === Model Selection Handler ===
+# This allows runtime model selection with temperature options
+- id: model-selector
+  name: cordis:group
+  group: true
+  config:
+    defaultPreset: standard
+    presets:
+      - name: standard
+        model: deepseek-v4-flash
+        temperature: 0.2
+      - name: code
+        model: deepseek-v4-coder
+        temperature: 0.1
+      - name: creative
+        model: deepseek-v4-flash
+        temperature: 0.7
+      - name: reasoning
+        model: deepseek-v4
+        temperature: 0.3
+      - name: low-temp
+        model: deepseek-v4-flash
+        temperature: 0.0
+    # Third-party model support
+    thirdPartyModels:
+      - name: ollama-llama3
+        baseUrl: http://localhost:11434
+        model: llama3.1
+        temperature: 0.7
+      - name: ollama-qwen
+        baseUrl: http://localhost:11434
+        model: qwen2.5-coder
+        temperature: 0.2
+      - name: vllm-deepseek
+        baseUrl: ${VLLM_BASE_URL:-http://localhost:8000}
+        model: deepseek-v4-flash
+        temperature: 0.2
