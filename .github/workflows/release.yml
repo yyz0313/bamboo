@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:  # Manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          cd src
+          npm install
+
+      - name: Build React UI
+        run: |
+          cd src
+          npm run build
+          cd ..
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install bridge deps
+        run: pip install fastapi uvicorn httpx
+
+      - name: Package release
+        run: |
+          mkdir -p dist/bridge
+          cp -r bridge/* dist/bridge/
+          cp -r src/dist dist/ui
+          echo "Released: $(Get-Content src/dist/index.html | Select-String '<title>')(Original-REV)"
+
+      - name: Create Release Asset
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_name: bamboo-windows.zip
+          asset_path: dist/
+          asset_content_type: application/zip
+
+  publish-npm:
+    name: Publish NPM Package (optional)
+    needs: build-and-release
+    if: false  # Set to true if publishing to npm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      
+      - name: Publish
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
