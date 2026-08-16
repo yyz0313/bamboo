@@ -12,7 +12,8 @@ Env:
     DEEPSEEK_BASE_URL    forwarded to dsh
     DSH_RUNTIME_BIN      explicit path to dsh-jsonrpc-agent exe
     BAMBOO_MOCK=1        force mock mode (no network needed)
-    BAMBOO_PRESET        agent preset: standard | code | minimal | cordis
+    BAMBOO_PRESET        agent preset: standard | code | minimal | cordis | <custom>
+    BAMBOO_SUBAGENT_*_CONFIG  subagent model config JSON (model, temperature, maxTokens)
 """
 from __future__ import annotations
 
@@ -359,7 +360,21 @@ class Bridge:
         await self.agent.request("initialize", {"client": "bamboo"})
         self.initialized = True
 
-    async def run_session(self, prompt: str, preset: str = "standard") -> AsyncIterator[str]:
+    async def run_session(self, prompt: str, preset: str = "standard",
+                          model: str = None, temperature: float = None,
+                          max_tokens: int = None, provider: str = None,
+                          subagent_id: str = None) -> AsyncIterator[str]:
+        """Run a session with optional model parameters for subagents.
+        
+        Args:
+            prompt: User prompt
+            preset: Agent preset (standard, code, plan, etc.)
+            model: Override model for subagents (e.g., 'deepseek-v4', 'llama3')
+            temperature: Model temperature (0.0-2.0)
+            max_tokens: Maximum tokens
+            provider: LLM provider (deepseek, openai, ollama, etc.)
+            subagent_id: If set, configures model for future subagent calls
+        """
         await self.ensure_agent()
         session_id = f"s-{uuid.uuid4().hex[:12]}"
         if self.mode == "mock":
@@ -367,19 +382,35 @@ class Bridge:
                 yield line
             return
         assert self.agent is not None
-        await self.agent.request("session/create", {"sessionId": session_id, "preset": preset})
+        
+        # Build model config for subagents
+        model_config = {"preset": preset}
+        if model:
+            model_config["model"] = model
+        if temperature is not None:
+            model_config["temperature"] = temperature
+        if max_tokens:
+            model_config["maxTokens"] = max_tokens
+        if provider:
+            model_config["provider"] = provider
+        
+        # Store subagent config if specified
+        if subagent_id and model_config:
+            self.env[f"BAMBOO_SUBAGENT_{subagent_id.upper()}_CONFIG"] = json.dumps(model_config)
+        
+        await self.agent.request("session/create", {"sessionId": session_id, **model_config})
         try:
             result = await self.agent.request("session/run", {
                 "sessionId": session_id,
                 "prompt": prompt,
-                "preset": preset,
+                **model_config,
             })
-            # Convert dsh response to JSONL stream
             yield json.dumps({"type": "session", "version": 0, "id": session_id,
                               "createdAt": int(time.time() * 1000), "cwd": str(ROOT)}) + "\n"
             yield json.dumps(result) + "\n"
         finally:
             yield json.dumps({"type": "run/finished", "data": {"finishReason": "completed"}}) + "\n"
+
 
     async def shutdown(self) -> None:
         if self.agent is not None:
@@ -453,6 +484,19 @@ def build_app() -> Any:
 
     @app.post("/api/run")
     async def run(request: Request):
+        """Run a session with optional model parameters for subagents.
+        
+        Request body:
+        {
+            "prompt": "user prompt",
+            "preset": "standard|code|plan|cordis|<custom>",
+            "model": "deepseek-v4-flash",
+            "temperature": 0.7,
+            "maxTokens": 16000,
+            "provider": "deepseek",
+            "subagentId": "analyzer"
+        }
+        """
         try:
             raw = await request.body()
             body = json.loads(raw) if raw else {}
@@ -460,12 +504,82 @@ def build_app() -> Any:
             body = {}
         prompt = body.get("prompt", "")
         preset = body.get("preset", os.environ.get("BAMBOO_PRESET", "standard"))
+        model = body.get("model")
+        temperature = body.get("temperature")
+        max_tokens = body.get("maxTokens")
+        provider = body.get("provider")
+        subagent_id = body.get("subagentId")
 
         async def event_gen():
-            async for line in bridge.run_session(prompt, preset):
+            async for line in bridge.run_session(prompt, preset, model, temperature, 
+                                                  max_tokens, provider, subagent_id):
                 yield f"data: {line}\n\n"
 
         return StreamingResponse(event_gen(), media_type="text/event-stream; charset=utf-8")
+
+
+    # --- Subagent Model Configuration ---
+    @app.post("/api/subagent/model")
+    async def configure_subagent_model(request: Request):
+        """Configure model parameters for subagent delegation.
+        
+        Request body:
+        {
+            "agentId": "my-agent",
+            "model": "deepseek-v4-flash",
+            "temperature": 0.7,
+            "maxTokens": 16000,
+            "provider": "deepseek"
+        }
+        """
+        try:
+            body = await request.json()
+        except:
+            return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+        
+        agent_id = body.get("agentId", "default")
+        model = body.get("model", "deepseek-v4-flash")
+        temperature = body.get("temperature", 0.7)
+        max_tokens = body.get("maxTokens", 16000)
+        provider = body.get("provider", "deepseek")
+        
+        # Validate temperature range
+        if not (0.0 <= temperature <= 2.0):
+            return JSONResponse({"error": "temperature must be between 0.0 and 2.0"}, status_code=400)
+        
+        config = {
+            "model": model,
+            "temperature": temperature,
+            "maxTokens": max_tokens,
+            "provider": provider
+        }
+        
+        # Store in environment for subagents to read
+        os.environ[f"BAMBOO_SUBAGENT_{agent_id.upper()}_CONFIG"] = json.dumps(config)
+        
+        return {"status": "ok", "agentId": agent_id, "config": config}
+
+    @app.get("/api/model/config")
+    async def get_model_config():
+        """Get current model configuration for all subagents."""
+        configs = {}
+        for key, value in os.environ.items():
+            if key.startswith("BAMBOO_SUBAGENT_") and key.endswith("_CONFIG"):
+                agent_id = key.replace("BAMBOO_SUBAGENT_", "").replace("_CONFIG", "").lower()
+                try:
+                    configs[agent_id] = json.loads(value)
+                except:
+                    pass
+        return {"configs": configs}
+
+    @app.post("/api/model/reset")
+    async def reset_model_config():
+        """Reset all subagent model configurations."""
+        keys_to_remove = [k for k in os.environ.keys() if k.startswith("BAMBOO_SUBAGENT_") and k.endswith("_CONFIG")]
+        for k in keys_to_remove:
+            del os.environ[k]
+        return {"status": "ok", "message": f"Reset {len(keys_to_remove)} subagent configs"}
+
 
     @app.post("/api/command")
     async def send_command(request: Request):
@@ -508,6 +622,16 @@ def _build_stdlib_app(bridge: Bridge) -> Any:
             elif self.path == "/api/update/check":
                 self._send(200, {"current": "0.2.0", "dshLatestTag": "unknown",
                                   "hasUpdate": False})
+            elif self.path == "/api/model/config":
+                configs = {}
+                for key, value in os.environ.items():
+                    if key.startswith("BAMBOO_SUBAGENT_") and key.endswith("_CONFIG"):
+                        agent_id = key.replace("BAMBOO_SUBAGENT_", "").replace("_CONFIG", "").lower()
+                        try:
+                            configs[agent_id] = json.loads(value)
+                        except:
+                            pass
+                self._send(200, {"configs": configs})
             else:
                 self._send(404, {"error": "not found"})
 
@@ -521,6 +645,11 @@ def _build_stdlib_app(bridge: Bridge) -> Any:
                     body = {}
                 prompt = body.get("prompt", "")
                 preset = body.get("preset", "standard")
+                model = body.get("model")
+                temperature = body.get("temperature")
+                max_tokens = body.get("maxTokens")
+                provider = body.get("provider")
+                subagent_id = body.get("subagentId")
 
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -528,7 +657,8 @@ def _build_stdlib_app(bridge: Bridge) -> Any:
                 self.end_headers()
 
                 async def pump():
-                    async for line in bridge.run_session(prompt, preset):
+                    async for line in bridge.run_session(prompt, preset, model, temperature,
+                                                          max_tokens, provider, subagent_id):
                         self.wfile.write(f"data: {line}\n\n".encode("utf-8"))
                         self.wfile.flush()
 
@@ -542,6 +672,33 @@ def _build_stdlib_app(bridge: Bridge) -> Any:
                     body = {}
                 self._send(200, {"status": "ok", "command": body.get("name", ""),
                                   "args": body.get("args", "")})
+            elif self.path == "/api/subagent/model":
+                length = int(self.headers.get("Content-Length", 0))
+                raw = self.rfile.read(length) if length > 0 else b""
+                try:
+                    body = json.loads(raw) if raw else {}
+                except json.JSONDecodeError:
+                    self._send(400, {"error": "Invalid JSON"})
+                    return
+                
+                agent_id = body.get("agentId", "default")
+                model = body.get("model", "deepseek-v4-flash")
+                temperature = body.get("temperature", 0.7)
+                max_tokens = body.get("maxTokens", 16000)
+                provider = body.get("provider", "deepseek")
+                
+                if not (0.0 <= temperature <= 2.0):
+                    self._send(400, {"error": "temperature must be between 0.0 and 2.0"})
+                    return
+                
+                config = {
+                    "model": model,
+                    "temperature": temperature,
+                    "maxTokens": max_tokens,
+                    "provider": provider
+                }
+                os.environ[f"BAMBOO_SUBAGENT_{agent_id.upper()}_CONFIG"] = json.dumps(config)
+                self._send(200, {"status": "ok", "agentId": agent_id, "config": config})
             else:
                 self._send(404, {"error": "not found"})
 
