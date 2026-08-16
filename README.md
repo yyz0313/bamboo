@@ -194,6 +194,22 @@ bamboo/
 └─────────────────────────────────────────────────────────┘
 ```
 
+## 插件扩展
+
+### 缺失功能的 dsh 插件设计
+
+以下功能从 Codex/ZCode 移植到 dsh 作为插件实现：
+
+| 插件 | 功能 | 说明 |
+|------|------|-----|
+| `dsh-mcp-bridge` | MCP 集成 | 连接 Model Context Protocol 服务器 |
+| `dsh-document-skills` | 文档生成 | DOCX/PDF/PPTX 模板化生成 |
+| `dsh-browser-automation` | 浏览器自动化 | Playwright DOM → locator → action 工作流 |
+| `dsh-skill-creator` | 技能创作 | AI 辅助技能编写 |
+| `dsh-diagnostics` | 诊断工具 | 系统性故障排查 |
+
+详细设计请参考 `DOCS/PLUGIN_DESIGN.md`
+
 ## License
 
 MIT（UI / Bridge / 插件部分）
