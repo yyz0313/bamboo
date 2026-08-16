@@ -46,16 +46,17 @@ def normalize_path_for_windows(path: str) -> str:
     if sys.platform != 'win32':
         return path
     
-    # Normalize separators
-    path = path.replace('/', '\')
+    # Normalize separators (convert forward slashes to backslashes for Windows)
+    path = path.replace('/', os.sep)
     
     # Uppercase drive letter
-    if len(path) > 1 and path[1] == ':':
+    if len(path) > 2 and path[1] == ':':
         path = path[0].upper() + path[1:]
     
-    # Handle UNC paths
-    if path.startswith('\\'):
-        path = '\\' + path[2:].lower()
+    # Handle UNC paths (\\\\server\share)
+    if path.startswith(os.sep + os.sep):
+        # Remove trailing lowercase to preserve UNC format
+        pass
     
     return path
 
@@ -642,6 +643,94 @@ def build_app() -> Any:
             del os.environ[k]
         return {"status": "ok", "message": f"Reset {len(keys_to_remove)} subagent configs"}
 
+    # --- Archive Manager Integration ---
+    @app.get("/api/archive/list")
+    async def archive_list():
+        """List all sessions including archived ones."""
+        sessions_dir = Path(os.environ.get("BAMBOO_SESSION_DIR", ROOT / ".sessions"))
+        sessions = []
+        
+        if sessions_dir.exists():
+            for f in sessions_dir.glob("*.jsonl"):
+                try:
+                    with open(f, 'r', encoding='utf-8') as file:
+                        for line in file:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            data = json.loads(line)
+                            if data.get('type') == 'session':
+                                sessions.append({
+                                    'id': data.get('id', ''),
+                                    'title': data.get('title', f.stem),
+                                    'createdAt': data.get('createdAt', 0),
+                                    'status': 'archived' if '.archived' in f.name else 'active'
+                                })
+                                break
+                except Exception:
+                    continue
+        
+        return {"sessions": sessions, "count": len(sessions)}
+
+    @app.post("/api/archive/unarchive")
+    async def archive_unarchive(request: Request):
+        """Unarchive a session."""
+        try:
+            body = await request.json()
+        except:
+            return {"ok": False, "error": "Invalid JSON"}
+        
+        session_id = body.get("sessionId")
+        if not session_id:
+            return {"ok": False, "error": "Missing sessionId"}
+        
+        sessions_dir = Path(os.environ.get("BAMBOO_SESSION_DIR", ROOT / ".sessions"))
+        
+        # Find archived session
+        archived_file = sessions_dir / f"{session_id}.archived.jsonl"
+        active_file = sessions_dir / f"{session_id}.jsonl"
+        
+        if archived_file.exists() and not active_file.exists():
+            archived_file.rename(active_file)
+            return {"ok": True, "sessionId": session_id}
+        
+        return {"ok": False, "error": "Session not found or already active"}
+
+    @app.post("/api/archive/delete")
+    async def archive_delete(request: Request):
+        """Delete a session permanently."""
+        import shutil
+        
+        try:
+            body = await request.json()
+        except:
+            return {"ok": False, "error": "Invalid JSON"}
+        
+        session_id = body.get("sessionId")
+        if not session_id:
+            return {"ok": False, "error": "Missing sessionId"}
+        
+        sessions_dir = Path(os.environ.get("BAMBOO_SESSION_DIR", ROOT / ".sessions"))
+        deleted = []
+        
+        # Delete all session files
+        for pattern in [f"{session_id}.jsonl", f"{session_id}.archived.jsonl"]:
+            f = sessions_dir / pattern
+            if f.exists():
+                f.unlink()
+                deleted.append(str(f))
+        
+        # Delete session directory if exists
+        session_dir = sessions_dir / session_id
+        if session_dir.exists():
+            shutil.rmtree(session_dir)
+            deleted.append(str(session_dir))
+        
+        if deleted:
+            return {"ok": True, "sessionId": session_id, "deleted": deleted}
+        
+        return {"ok": False, "error": "Session not found"}
+
 
     @app.post("/api/command")
     async def send_command(request: Request):
@@ -694,6 +783,32 @@ def _build_stdlib_app(bridge: Bridge) -> Any:
                         except:
                             pass
                 self._send(200, {"configs": configs})
+            elif self.path == "/api/archive/list":
+                # Archive list endpoint
+                sessions_dir = Path(os.environ.get("BAMBOO_SESSION_DIR", ROOT / ".sessions"))
+                sessions = []
+                
+                if sessions_dir.exists():
+                    for f in sessions_dir.glob("*.jsonl"):
+                        try:
+                            with open(f, 'r', encoding='utf-8') as file:
+                                for line in file:
+                                    line = line.strip()
+                                    if not line:
+                                        continue
+                                    data = json.loads(line)
+                                    if data.get('type') == 'session':
+                                        sessions.append({
+                                            'id': data.get('id', ''),
+                                            'title': data.get('title', f.stem),
+                                            'createdAt': data.get('createdAt', 0),
+                                            'status': 'archived' if '.archived' in f.name else 'active'
+                                        })
+                                        break
+                        except Exception:
+                            continue
+                
+                self._send(200, {"sessions": sessions, "count": len(sessions)})
             else:
                 self._send(404, {"error": "not found"})
 
@@ -761,6 +876,53 @@ def _build_stdlib_app(bridge: Bridge) -> Any:
                 }
                 os.environ[f"BAMBOO_SUBAGENT_{agent_id.upper()}_CONFIG"] = json.dumps(config)
                 self._send(200, {"status": "ok", "agentId": agent_id, "config": config})
+            elif self.path == "/api/archive/unarchive":
+                # Unarchive session
+                length = int(self.headers.get("Content-Length", 0))
+                raw = self.rfile.read(length) if length > 0 else b""
+                try:
+                    body = json.loads(raw) if raw else {}
+                except json.JSONDecodeError:
+                    self._send(400, {"error": "Invalid JSON"})
+                    return
+                
+                session_id = body.get("sessionId")
+                if not session_id:
+                    self._send(400, {"error": "Missing sessionId"})
+                    return
+                
+                sessions_dir = Path(os.environ.get("BAMBOO_SESSION_DIR", ROOT / ".sessions"))
+                archived_file = sessions_dir / f"{session_id}.archived.jsonl"
+                active_file = sessions_dir / f"{session_id}.jsonl"
+                
+                if archived_file.exists() and not active_file.exists():
+                    archived_file.rename(active_file)
+                    self._send(200, {"ok": True, "sessionId": session_id})
+                else:
+                    self._send(400, {"ok": False, "error": "Session not found or already active"})
+            elif self.path == "/api/archive/delete":
+                # Delete session permanently
+                length = int(self.headers.get("Content-Length", 0))
+                raw = self.rfile.read(length) if length > 0 else b""
+                try:
+                    body = json.loads(raw) if raw else {}
+                except json.JSONDecodeError:
+                    self._send(400, {"error": "Invalid JSON"})
+                    return
+                
+                session_id = body.get("sessionId")
+                if not session_id:
+                    self._send(400, {"error": "Missing sessionId"})
+                    return
+                
+                deleted = []
+                for pattern in [f"{session_id}.jsonl", f"{session_id}.archived.jsonl"]:
+                    f = sessions_dir / pattern
+                    if f.exists():
+                        f.unlink()
+                        deleted.append(str(f))
+                
+                self._send(200, {"ok": True, "sessionId": session_id, "deleted": deleted})
             else:
                 self._send(404, {"error": "not found"})
 
