@@ -28,14 +28,6 @@ src-tauri/target/
 src-tauri/capabilities/
 src-tauri/*.png
 
-# DSH vendor (keep structure, ignore built artifacts)
-vendor/deepseek-harness/.dsh/
-vendor/deepseek-harness/node_modules/
-vendor/deepseek-harness/lib/
-vendor/deepseek-harness/dist/
-vendor/deepseek-harness/python/sdk-runtime/src/deepseek_harness_runtime/runtime/dsh-jsonrpc-agent*
-!vendor/deepseek-harness/python/sdk-runtime/src/deepseek_harness_runtime/runtime/cordis.yml
-
 # Bamboo
 .bamboo.pid
 .bamboo.log
@@ -45,6 +37,15 @@ reports/
 coverage/
 .nyc_output/
 
+# DSH vendor (keep structure, ignore built artifacts)
+vendor/deepseek-harness/.dsh/
+vendor/deepseek-harness/node_modules/
+vendor/deepseek-harness/lib/
+vendor/deepseek-harness/dist/
+vendor/deepseek-harness/python/sdk-runtime/src/deepseek_harness_runtime/runtime/dsh-jsonrpc-agent*
+# NOTE: We keep bridge/cordis.yml as reference
+# vendor/deepseek-harness is managed as a git submodule
+
 # Python
 __pycache__/
 *.py[cod]
@@ -52,20 +53,20 @@ __pycache__/
 .pytest_cache/
 *.whl
 
-# vendor/deepseek-harness - if submodule, these will be ignored
-vendor/deepseek-harness/.agents/
-vendor/deepseek-harness/.claude/
-vendor/deepseek-harness/.github/
-vendor/deepseek-harness/docs/
-vendor/deepseek-harness/examples/
-vendor/deepseek-harness/native/
-vendor/deepseek-harness/packages/
-vendor/deepseek-harness/patches/
-vendor/deepseek-harness/scripts/
-vendor/deepseek-harness/website/
-vendor/deepseek-harness/tsconfig*.json
-vendor/deepseek-harness/vitest*.ts
-vendor/deepseek-harness/pnpm-lock.yaml
-vendor/deepseek-harness/pnpm-workspace.yaml
-vendor/deepseek-harness/pytest.ini
-vendor/deepseek-harness/THIRD_PARTY_NOTICES.md
+# Temp files
+bridge_new.log
+git_setup.log
+init_repo.py
+result*.txt
+setup_git.py
+sse_result*.txt
+test_result*.txt
+tmp-*.log
+tmp_*.py
+_git_*.log
+*_check.*
+*_out.*
+*_dulwich*.txt
+*_porcelain*.txt
+*_funcs.txt
+*_sig.txt
