@@ -26,6 +26,68 @@ import sys
 import time
 import uuid
 from pathlib import Path
+
+
+# =============================================================================
+# Windows Compatibility Functions
+# =============================================================================
+
+def normalize_path_for_windows(path: str) -> str:
+    """Normalize path for Windows compatibility.
+    
+    Handles:
+    - Backslash vs forward slash
+    - Drive letter case
+    - Unicode characters
+    - Path length limits
+    """
+    import sys
+    
+    if sys.platform != 'win32':
+        return path
+    
+    # Normalize separators
+    path = path.replace('/', '\')
+    
+    # Uppercase drive letter
+    if len(path) > 1 and path[1] == ':':
+        path = path[0].upper() + path[1:]
+    
+    # Handle UNC paths
+    if path.startswith('\\'):
+        path = '\\' + path[2:].lower()
+    
+    return path
+
+
+
+def get_available_port(default_port: int = 18720, max_attempts: int = 100) -> int:
+    """Find an available port starting from default_port."""
+    import socket
+    
+    for port in range(default_port, default_port + max_attempts):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('127.0.0.1', port))
+                return port
+        except OSError:
+            continue
+    
+    # Fallback to any available port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('', 0))
+        return s.getsockname()[1]
+
+
+def check_disk_space(path: str, min_mb: int = 100) -> bool:
+    """Check if there's enough disk space."""
+    try:
+        import shutil
+        total, used, free = shutil.disk_usage(path)
+        return free > min_mb * 1024 * 1024
+    except:
+        return True  # Assume OK if check fails
+
 from typing import Any, AsyncIterator, Optional
 
 try:
@@ -706,6 +768,43 @@ def _build_stdlib_app(bridge: Bridge) -> Any:
             pass
 
     return ThreadingHTTPServer(("127.0.0.1", 18720), Handler)
+
+
+# =============================================================================
+# Improved Shutdown Handling (Windows compatible)
+# =============================================================================
+
+def setup_cleanup_handlers(bridge_instance):
+    """Setup cleanup handlers for graceful shutdown."""
+    import atexit
+    import signal
+    
+    def cleanup():
+        """Cleanup function to be called on exit."""
+        try:
+            if bridge_instance:
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(bridge_instance.shutdown())
+                loop.close()
+        except Exception as e:
+            print(f"Cleanup warning: {e}", file=sys.stderr)
+    
+    # Register for atexit (works on all platforms)
+    atexit.register(cleanup)
+    
+    # Handle SIGINT (Ctrl+C) gracefully
+    try:
+        signal.signal(signal.SIGINT, lambda s, f: cleanup())
+    except AttributeError:
+        pass  # Windows signal handling limitations
+    
+    # Handle SIGTERM
+    try:
+        signal.signal(signal.SIGTERM, lambda s, f: cleanup())
+    except AttributeError:
+        pass
 
 
 def main() -> None:

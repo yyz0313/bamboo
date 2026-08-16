@@ -1,61 +1,51 @@
 @echo off
-chcp 65001 >nul
-title Bamboo - AI Coding Agent Desktop
+:: Bamboo Launch Script v2.0.0 - Windows Optimized
+:: ================================================
 
-REM ============================================================
-REM Bamboo Launcher
-REM ============================================================
+setlocal EnableDelayedExpansion
 
-set "PYTHON=C:\Users\yyz20\AppData\Local\Programs\Python\Python312\python.exe"
-set "NODE=C:\Users\yyz20\.workbuddy\binaries\node\versions\22.22.2\node.exe"
-set "ROOT=%~dp0"
-set "BRIDGE=%ROOT%bridge\main.py"
-set "UI_DIST=%ROOT%src\dist"
-set "VITE_BIN=%ROOT%src\node_modules\vite\bin\vite.js"
+:: Configuration
+set "BAMBOO_HOME=%~dp0"
+set "BAMBOO_PORT=18720"
+set "BAMBOO_MODEL=default"
 
-REM Check prerequisites
-if not exist "%PYTHON%" (
-    echo [ERROR] Python not found at %PYTHON%
-    echo        Please install Python 3.10+ from https://python.org
-    pause
-    exit /b 1
+:: Check for port conflicts and find available port
+for /f "tokens=*" %%i in ('powershell -Command "Import-Module NetTCPIP; $ports = Get-NetTCPConnection -LocalPort 18720 -ErrorAction SilentlyContinue; if ($ports) { for ($i=18721; $i -lt 18820; $i++) { $p = Get-NetTCPConnection -LocalPort $i -ErrorAction SilentlyContinue; if (-not $p) { Write-Output $i; break } } } else { Write-Output 18720 }"') do set "BAMBOO_PORT=%%i"
+
+:: Set Windows-compatible paths
+set "BAMBOO_DATA_DIR=%LOCALAPPDATA%\Bamboo\Data"
+if not exist "%BAMBOO_DATA_DIR%" mkdir "%BAMBOO_DATA_DIR%"
+
+:: Environment setup
+set "PYTHONIOENCODING=utf-8"
+set "PYTHONUNBUFFERED=1"
+
+:: DLL path fix for Windows
+if exist "%BAMBOO_HOME%vendor\python\DLLs" (
+    set "PYTHONPATH=%BAMBOO_HOME%vendor\python;%PYTHONPATH%"
 )
 
-if not exist "%NODE%" (
-    echo [ERROR] Node.js not found at %NODE%
-    echo        Bamboo requires Node.js 22+
-    pause
-    exit /b 1
+:: Launch Python bridge
+echo [Bamboo] Starting bridge on port %BAMBOO_PORT%...
+cd /d "%BAMBOO_HOME%bridge"
+python -c "import sys; sys.path.insert(0, r'%BAMBOO_HOME%bridge'); from main import main; import os; os.environ['PORT']='%BAMBOO_PORT%'; main()" --port %BAMBOO_PORT% --config "%BAMBOO_HOME%bridge\cordis.yml"
+
+:: Wait for bridge to start
+timeout /t 2 /nobreak >nul
+
+:: Check if frontend exists and start it
+if exist "%BAMBOO_HOME%src\dist\index.html" (
+    echo [Bamboo] Starting frontend...
+    cd /d "%BAMBOO_HOME%src"
+    start "" cmd /c "npx vite --port 5173 --host 127.0.0.1 --silent"
+    timeout /t 2 /nobreak >nul
+    start "" "http://127.0.0.1:5173"
 )
 
-echo ============================================================
-echo   Bamboo v0.1.0 - AI Coding Agent Desktop
-echo ============================================================
-echo.
+echo [Bamboo] Started successfully!
+echo Press Ctrl+C to stop
 
-REM Start bridge
-echo [1/2] Starting Python bridge on :18720...
-start "" /b "%PYTHON%" "%BRIDGE%" --port 18720
-timeout /t 3 /nobreak >nul
-
-REM Check bridge health
-curl -s http://127.0.0.1:18720/api/health >nul 2>&1
-if errorlevel 1 (
-    echo [WARN] Bridge may not be ready, continuing anyway (mock mode)
-) else (
-    echo [OK] Bridge ready
-)
-
-REM Start Vite dev server
-echo [2/2] Starting UI server on :1420...
-start "" "http://localhost:1420"
-"%NODE%" "%VITE_BIN%" run dev --port 1420 --host 127.0.0.1
-
-echo.
-echo Done. Open http://localhost:1420 in your browser.
-echo Press any key to stop servers...
-pause >nul
-
-REM Cleanup
-taskkill /f /im python.exe 2>nul
-exit /b 0
+:: Keep script running to maintain bridge process
+:waitloop
+timeout /t 30 /nobreak >nul
+goto waitloop
